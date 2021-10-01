@@ -31,6 +31,7 @@ There are a few limitations that have to be kept in mind when using this library
 * Do not use `r0e_call` while you are running in ring 0. This leads to a system freeze. 
 * SMAP and SMEP are automatically disabled when calling `r0e_call`, and they are never re-enabled. This is a security risk. Well, but if you use this library and/or have PTEditor loaded, your system isn't secure anyway. 
 * The library is not thread-safe. 
+* If KPTI is enabled, you cannot read or write kernel memory, as the kernel is unmapped in user space.
 
 ## Technical Details
 r0e modifies the interrupt-descriptor table (IDT) and adds an entry for (software) interrupt 45. 

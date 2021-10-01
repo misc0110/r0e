@@ -46,6 +46,19 @@ size_t kallsyms_lookup(const char *symbol) {
   return symaddr.addr;
 }
 
+void pti_parse(char* line, int linenr, void* enabled) {
+  if(strstr(line, "PTI")) {
+    *(int*)enabled = 1;
+  }
+}
+
+int is_kpti_enabled() {
+  int enabled = 0;
+  file_foreach_line("/sys/devices/system/cpu/vulnerabilities/meltdown", pti_parse, &enabled);
+  return enabled;
+}
+
+
 volatile void *addr = 0;
 
 size_t read_mem() { 
@@ -55,6 +68,10 @@ size_t read_mem() {
 int main() {
   if (r0e_init()) {
     printf("Could not initialize r0e\n");
+    return 1;
+  }
+  if(is_kpti_enabled()) {
+    printf("[r0e] KPTI is enabled, cannot read kernel memory from user space. Boot with 'pti=off'.\n");
     return 1;
   }
   addr = (void *)kallsyms_lookup("page_offset_base");
