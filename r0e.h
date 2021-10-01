@@ -88,6 +88,10 @@ static void r0e_dump_idt_entry(r0e_idt_entry_t entry) {
 static void *r0e_map_idt() {
   r0e_idt_t idt;
   asm volatile("sidt %0" : "=m"(idt) : : "memory");
+  // umip prevents us from getting the real IDT base address, make an educated guess for Linux
+  if(idt.base >= 0xffffffffffff0000ull) {
+       idt.base = 0xfffffe0000000000ull;
+  }
   size_t pfn = ptedit_pte_get_pfn((void *)(idt.base), 0);
   return ptedit_pmap(pfn * 4096, 4096);
 }

@@ -10,7 +10,7 @@ size_t read_msr() {
 }
 
 int main() {
-  msr = 0x1a0;
+  msr = 0xC0000082;
 
   if (r0e_init()) {
     printf("Could not initialize r0e\n");
