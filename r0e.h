@@ -93,6 +93,9 @@ static void *r0e_map_idt() {
        idt.base = 0xfffffe0000000000ull;
   }
   size_t pfn = ptedit_pte_get_pfn((void *)(idt.base), 0);
+  if(!pfn) {
+    return NULL;
+  }
   return ptedit_pmap(pfn * 4096, 4096);
 }
 
@@ -129,6 +132,10 @@ int r0e_init() {
 
   // map IDT to add IRQ handler
   r0e_sys_idt = (r0e_idt_entry_t *)r0e_map_idt();
+  if(!r0e_sys_idt) {
+    fprintf(stderr, "[r0e] Could not find IDT\n");
+    return 1;
+  }
 
 #define LOW_PTR(x) (((size_t)(x)) & 0xffff)
 #define MID_PTR(x) ((((size_t)(x)) >> 16) & 0xffff)
