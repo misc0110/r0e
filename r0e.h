@@ -179,25 +179,25 @@ void r0e_cleanup() {
  * @return The return value of the callback function
  */
 size_t __attribute__((naked)) r0e_call(r0e_callback_t fnc) {
-  asm volatile("push %rbx\n"
-               "push %rcx\n"
-               "push %rdx\n"
-               "push %rsi\n"
-               "push %rdi\n"
-               "push %r8\n"
-               "push %r9\n"
-               "push %r10\n"
-               "push %r11\n"); // save registers
-  r0e_entry_point = (size_t)fnc;
-  asm volatile("int $45\n" // go to ring0 using interrupt
-               "pop %r11\n"
-               "pop %r10\n"
-               "pop %r9\n"
-               "pop %r8\n"
-               "pop %rdi\n"
-               "pop %rsi\n"
-               "pop %rdx\n"
-               "pop %rcx\n"
-               "pop %rbx\n" // restore registers
-               "retq");
+  asm volatile("push %%rbx\n"
+               "push %%rcx\n"
+               "push %%rdx\n"
+               "push %%rsi\n"
+               "push %%rdi\n"
+               "push %%r8\n"
+               "push %%r9\n"
+               "push %%r10\n"
+               "push %%r11\n" // save registers
+               "mov %%rdi, %0\n" // store entry point in r0e_entry_point
+               "int $45\n" // go to ring0 using interrupt
+               "pop %%r11\n"
+               "pop %%r10\n"
+               "pop %%r9\n"
+               "pop %%r8\n"
+               "pop %%rdi\n"
+               "pop %%rsi\n"
+               "pop %%rdx\n"
+               "pop %%rcx\n"
+               "pop %%rbx\n" // restore registers
+               "retq" : "=m"(r0e_entry_point) : : "memory");
 }
