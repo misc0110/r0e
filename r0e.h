@@ -8,6 +8,14 @@
 #include <stdio.h>
 #include <sys/mman.h>
 
+#define R0E_VECTOR 200
+
+
+#ifndef var_to_string
+#define __var_to_string(x) #x
+#define _var_to_string(x) __var_to_string(x)
+#define var_to_string(x) _var_to_string(x)
+#endif
 
 /**
  * Struct for the IDT
@@ -39,9 +47,9 @@ typedef struct {
 typedef size_t (*r0e_callback_t)(void);
 
 /** Original return address for the IRQ handler */
-static size_t r0e_ret_addr = 0;
+static size_t __attribute__((aligned(4096))) r0e_ret_addr = 0;
 /** Address of callback function */
-static size_t r0e_entry_point = 0;
+static size_t __attribute__((aligned(4096))) r0e_entry_point = 0;
 /** Virtual address of the IDT */
 static r0e_idt_entry_t *r0e_sys_idt;
 /** Original IDT entry for the used interrupt vector */
@@ -99,6 +107,12 @@ static void *r0e_map_idt() {
   return ptedit_pmap(pfn * 4096, 4096);
 }
 
+int r0e_lock_user_page(void* addr) {
+  *(volatile char *)addr; // force mapping
+  // prevent swapping
+  return mlock(addr, 4096);
+}
+
 /**
  * Initialize r0e
  *
@@ -109,7 +123,6 @@ int r0e_init() {
     fprintf(stderr, "[r0e] Could not init PTEditor\n");
     return 1;
   }
-  int vector = 45;
 
   // freeze to core
   int cpu = 0;
@@ -121,10 +134,12 @@ int r0e_init() {
     return 1;
   }
 
-  *(volatile char *)r0e_irq_handler; // force mapping
-  // prevent swapping
-  if (mlock(r0e_irq_handler, 4096)) {
+  if(r0e_lock_user_page(r0e_irq_handler)) {
     fprintf(stderr, "[r0e] Could not lock IRQ handler in memory\n");
+    return 1;
+  }
+  if(r0e_lock_user_page(&r0e_ret_addr) || r0e_lock_user_page(&r0e_entry_point)) {
+    fprintf(stderr, "[r0e] Could not lock global data in memory\n");
     return 1;
   }
   // bring irq handler into the kernel
@@ -139,8 +154,9 @@ int r0e_init() {
 
 #define LOW_PTR(x) (((size_t)(x)) & 0xffff)
 #define MID_PTR(x) ((((size_t)(x)) >> 16) & 0xffff)
-#define HIGH_PTR(x) ((((size_t)(x)) >> 32) & 0xffff)
+#define HIGH_PTR(x) ((((size_t)(x)) >> 32) & 0xffffffff)
 #define GATE_INTERRUPT 14
+#define GATE_TRAP 15
 #define USER_DPL 3
 #define KERNEL_DPL 0
 
@@ -155,8 +171,8 @@ int r0e_init() {
   patched_idt_entry.offset_2 = MID_PTR(r0e_irq_handler);
   patched_idt_entry.offset_3 = HIGH_PTR(r0e_irq_handler);
 
-  r0e_original_entry = r0e_sys_idt[vector];
-  r0e_sys_idt[vector] = patched_idt_entry;
+  r0e_original_entry = r0e_sys_idt[R0E_VECTOR];
+  r0e_sys_idt[R0E_VECTOR] = patched_idt_entry;
   return 0;
 }
 
@@ -164,8 +180,7 @@ int r0e_init() {
  * Cleanup r0e when no other functionality of r0e is required anymore
  */
 void r0e_cleanup() {
-  int vector = 45;
-  r0e_sys_idt[vector] = r0e_original_entry;
+  r0e_sys_idt[R0E_VECTOR] = r0e_original_entry;
   munmap(r0e_sys_idt, 4096);
   munlock(r0e_irq_handler, 4096);
   ptedit_cleanup();
@@ -178,7 +193,7 @@ void r0e_cleanup() {
  *
  * @return The return value of the callback function
  */
-size_t __attribute__((naked)) r0e_call(r0e_callback_t fnc) {
+size_t __attribute__((naked)) r0e_unsafe_call(r0e_callback_t fnc) {
   asm volatile("push %%rbx\n"
                "push %%rcx\n"
                "push %%rdx\n"
@@ -189,7 +204,7 @@ size_t __attribute__((naked)) r0e_call(r0e_callback_t fnc) {
                "push %%r10\n"
                "push %%r11\n" // save registers
                "mov %%rdi, %0\n" // store entry point in r0e_entry_point
-               "int $45\n" // go to ring0 using interrupt
+               "int $" var_to_string(R0E_VECTOR) "\n" // go to ring0 using interrupt
                "pop %%r11\n"
                "pop %%r10\n"
                "pop %%r9\n"
@@ -200,4 +215,18 @@ size_t __attribute__((naked)) r0e_call(r0e_callback_t fnc) {
                "pop %%rcx\n"
                "pop %%rbx\n" // restore registers
                "retq" : "=m"(r0e_entry_point) : : "memory");
+}
+
+/**
+ * Execute a callback function in ring 0, ensuring that the executed code is in memory
+ *
+ * @param[in] fnc The callback function that should be executed in ring 0
+ *
+ * @return The return value of the callback function
+ */
+size_t r0e_call(r0e_callback_t fnc) {
+  if(r0e_lock_user_page(fnc)) {
+      return -1;
+  }
+  return r0e_unsafe_call(fnc);
 }
