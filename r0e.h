@@ -124,6 +124,7 @@ int r0e_init() {
     return 1;
   }
 
+#if 0
   // freeze to core
   int cpu = 0;
   getcpu(&cpu, NULL);
@@ -133,6 +134,7 @@ int r0e_init() {
     fprintf(stderr, "[r0e] Could not lock application to current core\n");
     return 1;
   }
+#endif
 
   if(r0e_lock_user_page(r0e_irq_handler)) {
     fprintf(stderr, "[r0e] Could not lock IRQ handler in memory\n");
